@@ -1,0 +1,113 @@
+#
+# Copyright(C) 2018, Juniper Networks, Inc.
+# All rights reserved
+#
+# This SOFTWARE is licensed under the license provided in the LICENSE.txt
+# file.  By downloading, installing, copying, or otherwise using the
+# SOFTWARE, you agree to be bound by the terms of that license.  This
+# SOFTWARE is not an official Juniper product.
+#
+# Third-Party Code: This SOFTWARE may depend on other components under
+# separate copyright notice and license terms.  Your use of the source
+# code for those components is subject to the term and conditions of
+# the respective license as noted in the Third-Party source code.
+#
+
+PLATFORM_NAME          = $(shell uname)
+PLATFORM_VER		   = $(shell uname -r)
+PLATFORM_ARCH		   = $(shell uname -m)
+
+HONEYPROCS_BUILD_ROOT ?= $(ROOT_PATH)/build-$(PLATFORM_NAME)-$(PLATFORM_ARCH)
+HONEYPROCS_ROOT       ?= $(ROOT_PATH)
+VENDOR_BUILD_ROOT      = $(HONEYPROCS_BUILD_ROOT)/3rdparty
+
+
+ifeq (Darwin,$(PLATFORM_NAME))
+	PLATFORM_BUILD_NAME	= mac
+else ifeq ($(findstring CYGWIN,$(PLATFORM_NAME)), CYGWIN)
+	PLATFORM_BUILD_NAME	= win
+else
+	PLATFORM_BUILD_NAME	= linux
+endif
+
+LIBEXT			= lib
+OBJEXT			= obj
+RESEXT			= res
+OFLAG			= -Fo
+OEFLAG			= -Fe
+AROFLAG			= -out:
+AR				= lib.exe
+ARFLAGS			= -nologo
+CC				= cl.exe
+POC				?= $(CC)
+
+BUILD_BIN_DIR	= $(shell cygpath -m $(HONEYPROCS_BUILD_ROOT)/bin)
+BUILD_OBJ_DIR	= $(shell cygpath -m $(HONEYPROCS_BUILD_ROOT)/obj)
+BUILD_LIB_DIR	= $(shell cygpath -m $(HONEYPROCS_BUILD_ROOT)/lib)
+
+HONEYPROCS_INC_DIR  = $(shell cygpath -m $(ROOT_PATH)/src/)
+VENDOR_INC_DIR      = $(shell cygpath -m $(VENDOR_BUILD_ROOT)/include)
+VENDOR_BIN_DIR      = $(shell cygpath -m $(VENDOR_BUILD_ROOT)/bin)
+VENDOR_LIB_DIR      = $(shell cygpath -m $(VENDOR_BUILD_ROOT)/lib)
+VENDOR_OBJ_DIR      = $(shell cygpath -m $(VENDOR_BUILD_ROOT)/obj)
+
+OBJECTS_PREBUILT	=
+
+#
+# 4-15-2011: use -MD and clear VS_NO_DEFAULT for non-debug build
+#
+VS_RUNTIME_FLAG	= -MD
+
+CL_FLAGS			= -DWIN32 -MD -EHsc -nologo
+
+ifeq ($(HONEYPROCS_DO_DEBUG), 1)
+#
+# 5-9-2016: Note: if the last path component of the -Fd argument contains a '.' but is a directory
+# the 'cl' command will error out with: fatal error C1041: can't open program database
+# Apparently 'cl' treats the argument as a file and can't open it as a pdb
+#
+# The -MDd will link it with the debug version of multi-threaded
+# runtime libraries, and it will override the -MD, which is the
+# non-debug version.
+CL_FLAGS		+= -ZI -Od -DDEBUG -Fd$(OBJECT_DIR) -MDd
+endif
+
+#CL_FLAGS		+= -W4 -WX -wd4100 -wd4127 -wd4131 -wd4220 -wd4244 -wd4702 -wd4706 -wd4512 -wd4201
+# wd4100	- unreferences formal parameter
+# wd4127	- cond. expression is constant, i.e.: if (0) {...}
+# wd4131	- disable "uses old-style declarator"
+# wd4220	- varargs matches remaining parameters (htable.c:23)
+# wd4244	- conversion from "long double" to "double"
+# wd4702	- unreachable code
+# wd4706	- assignment within conditional expression
+# wd4512	- assignment operator could not be generated
+# wd4201	- nonstandard extension used : nameless struct/union
+
+CFLAGS			= $(CL_FLAGS) $(INCLUDES)
+CPPFLAGS		= $(CL_FLAGS) $(INCLUDES)
+
+EXTRA_LD_FLAGS	= -nologo
+
+ifeq ($(HONEYPROCS_DO_DEBUG), 1)
+	EXTRA_LD_FLAGS	+= -DEBUG -nodefaultlib:libcmt
+endif
+# removing non-platform libraries from this list
+EXTRA_WIN_LIBS	= user32 Rpcrt4 advapi32 gdi32 ws2_32 mswsock shell32 kernel32
+
+#	3-30-2011: other libraries that may be needed:
+#	shlwapi.lib winmm.lib mpr.lib userenv.lib kernel32.lib
+#
+#	5-25-2011: apr-1 requires: ws2_32 shell32
+#	6-27-2011: aprutil-1 requires rpcrt4 (for UuidCreate)
+#	6-27-2011: Iphlpapi for IP address manipulations in Bonjour
+# EXTRA_WIN_LIBS	= user32 Rpcrt4 advapi32 gdi32 ws2_32 shell32 Iphlpapi
+
+INCLUDES            = -I$(VENDOR_INC_DIR)
+
+#
+# 2-9-2011: Directory specific variables.
+# PROJ_DIR contains the path components following ROOT_PATTERN
+#
+PROJECT_DIR		= $(word 2,$(subst $(ROOT_PATTERN), ,$(CURDIR)))
+OBJECT_DIR		= $(BUILD_OBJ_DIR)/$(PROJECT_DIR)
+

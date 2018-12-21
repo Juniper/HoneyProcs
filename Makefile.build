@@ -1,0 +1,95 @@
+#
+# Copyright(C) 2018, Juniper Networks, Inc.
+# All rights reserved
+#
+# This SOFTWARE is licensed under the license provided in the LICENSE.txt
+# file.  By downloading, installing, copying, or otherwise using the
+# SOFTWARE, you agree to be bound by the terms of that license.  This
+# SOFTWARE is not an official Juniper product.
+#
+# Third-Party Code: This SOFTWARE may depend on other components under
+# separate copyright notice and license terms.  Your use of the source
+# code for those components is subject to the term and conditions of
+# the respective license as noted in the Third-Party source code.
+#
+
+LIBPATH_ARG         = -LIBPATH:$(VENDOR_LIB_DIR)
+LIBPATH_ARG		    += -LIBPATH:$(BUILD_LIB_DIR)
+
+#
+# 3-29-2011: Rename Unix 3rdparty library names to match Windows build of those packages.
+#
+WIN_LINK_LIBS	:= $(LINK_LIBS)
+
+#
+# 3-29-2011: Add "lib" prefix, ".lib" suffix, but note:
+# gtest is gtest.lib, sqlite3 is sqlite3.lib, ssleay32, etc.
+# so adjust those names after.
+#
+WIN_LIB_ARGS	:= $(foreach lib,$(WIN_LINK_LIBS),lib$(lib).$(LIBEXT))
+
+WIN_LIB_ARGS	:= $(subst libaprutil-1.lib,aprutil-1.lib,$(WIN_LIB_ARGS))
+WIN_LIB_ARGS	:= $(subst libapr-1.lib,apr-1.lib,$(WIN_LIB_ARGS))
+WIN_LIB_ARGS	+= $(foreach lib,$(EXTRA_WIN_LIBS),$(lib).lib)
+
+LINK_ARGS		+= -link $(EXTRA_LD_FLAGS) -debug $(LIBPATH_ARG) $(WIN_LIB_ARGS)
+
+OBJECTS		:= $(SOURCES)
+OBJECTS		:= $(OBJECTS:.cpp=.$(OBJEXT))
+OBJECTS		:= $(OBJECTS:.cc=.$(OBJEXT))
+OBJECTS		:= $(OBJECTS:.c=.$(OBJEXT))
+OBJECTS		:= $(OBJECTS:.rc=.res)
+
+OBJECTS		:= $(addprefix $(OBJECT_DIR)/,$(OBJECTS))
+
+#
+# 4-1-2011: Windows needs the flag and argument adjacent,
+# -Fd puts the pdb and ilk files in the bin directory too.
+#
+LINK_OUT_ARG	= $(OEFLAG)$@
+ifeq ($(HONEYPROCS_DO_DEBUG), 1)
+	LINK_OUT_ARG	+= -Fd$@
+endif
+
+setup : $(BUILD_BIN_DIR) $(BUILD_LIB_DIR) $(OBJECT_DIR)
+
+$(EXECUTABLE) :: $(OBJECT_DIR) $(OBJECTS)
+	$(CC) $(OBJECTS_PREBUILT) $(OBJECTS) $(LINK_OUT_ARG) $(LINK_ARGS)
+
+$(LIBRARY).$(LIBEXT) :: $(OBJECTS)
+ifeq ($(PLATFORM_BUILD_NAME),win)
+	if [ ! -e "$@" ] ; then $(AR) $(ARFLAGS) $(AROFLAG)$@ $^ ; \
+	else $(AR) $(ARFLAGS) $@ $^ ; fi
+else
+	$(AR) $(ARFLAGS) $(AROFLAG)$@ $^
+endif
+
+
+$(BUILD_BIN_DIR) :
+	mkdir -p $@
+
+$(BUILD_LIB_DIR) :
+	mkdir -p $@
+
+$(OBJECT_DIR) :
+	mkdir -p $@
+
+$(OBJECT_DIR)/%.$(OBJEXT) : %.cc
+	$(CC) -c $(CPPFLAGS) $< $(OFLAG)$@
+
+$(OBJECT_DIR)/%.$(OBJEXT) : %.cpp
+	$(CC) -c $(CPPFLAGS) $< $(OFLAG)$@
+
+$(OBJECT_DIR)/%.$(OBJEXT) : %.c $(DEPENDENCIES_HEADERS)
+	$(POC) -c $(CFLAGS) $< $(OFLAG)$@
+
+$(OBJECT_DIR)/%.$(RESEXT) :: %.rc
+	RC.exe -nologo -D _UNICODE -D UNICODE -l"0x0409" $(INCLUDES:-I=-i) $(RC_INCLUDES) $(OFLAG)$@ $<
+
+clean:: rmtargets
+
+rmtargets::
+	rm -f $(OBJECTS) $(EXECUTABLE)
+	if [ "$(LIBRARY).$(LIBEXT)" != ".$(LIBEXT)" ] ; then rm -f $(LIBRARY).$(LIBEXT) ; fi
+
+verify::
